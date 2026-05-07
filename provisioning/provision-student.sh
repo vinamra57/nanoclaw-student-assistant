@@ -26,6 +26,7 @@ VM_NAME=""
 DISCORD_TOKEN=""
 ANTHROPIC_KEY=""
 VIRTUAL_TA_URL=""
+CHATCSE_AGENT_TOKEN=""
 ED_TOKEN=""
 ED_COURSE_ID=""
 COMPOSIO_KEY=""
@@ -41,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     --discord-token) DISCORD_TOKEN="$2"; shift 2 ;;
     --anthropic-key) ANTHROPIC_KEY="$2"; shift 2 ;;
     --virtual-ta-url) VIRTUAL_TA_URL="$2"; shift 2 ;;
+    --chatcse-agent-token) CHATCSE_AGENT_TOKEN="$2"; shift 2 ;;
     --ed-token) ED_TOKEN="$2"; shift 2 ;;
     --ed-course-id) ED_COURSE_ID="$2"; shift 2 ;;
     --composio-key) COMPOSIO_KEY="$2"; shift 2 ;;
@@ -113,7 +115,7 @@ echo "==> Running setup (this takes 5-10 minutes)"
 gcloud compute ssh "$VM_NAME" --project="$PROJECT" --zone="$ZONE" -- \
   "chmod +x ~/setup-student.sh && ~/setup-student.sh \
     '$DISCORD_TOKEN' '$ANTHROPIC_KEY' '$VIRTUAL_TA_URL' \
-    '$ED_TOKEN' '$ED_COURSE_ID' '$COMPOSIO_KEY'"
+    '$ED_TOKEN' '$ED_COURSE_ID' '$COMPOSIO_KEY' '$CHATCSE_AGENT_TOKEN'"
 
 echo ""
 echo "============================================"

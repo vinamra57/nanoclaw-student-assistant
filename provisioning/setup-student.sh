@@ -8,7 +8,7 @@ set -euo pipefail
 #                           [ED_TOKEN] [ED_COURSE_ID] [COMPOSIO_KEY]
 
 if [[ $# -lt 3 ]]; then
-  echo "Usage: $0 <DISCORD_TOKEN> <ANTHROPIC_KEY> <VIRTUAL_TA_URL> [ED_TOKEN] [ED_COURSE_ID] [COMPOSIO_KEY]"
+  echo "Usage: $0 <DISCORD_TOKEN> <ANTHROPIC_KEY> <VIRTUAL_TA_URL> [ED_TOKEN] [ED_COURSE_ID] [COMPOSIO_KEY] [CHATCSE_AGENT_TOKEN]"
   exit 1
 fi
 
@@ -18,6 +18,7 @@ VIRTUAL_TA_URL="$3"
 ED_TOKEN="${4:-}"
 ED_COURSE_ID="${5:-}"
 COMPOSIO_KEY="${6:-}"
+CHATCSE_AGENT_TOKEN="${7:-}"
 
 echo "==> Updating system packages"
 sudo apt update && sudo apt upgrade -y
@@ -89,6 +90,7 @@ deactivate
 echo "==> Writing environment file"
 cat > "$HOME/student-assistant/.env" << ENVEOF
 VIRTUAL_TA_URL=$VIRTUAL_TA_URL
+CHATCSE_AGENT_TOKEN=$CHATCSE_AGENT_TOKEN
 ED_API_TOKEN=$ED_TOKEN
 ED_COURSE_ID=$ED_COURSE_ID
 COMPOSIO_API_KEY=$COMPOSIO_KEY

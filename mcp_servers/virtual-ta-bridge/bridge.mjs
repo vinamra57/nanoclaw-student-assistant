@@ -32,8 +32,22 @@ import {
 const VIRTUAL_TA_URL = process.env.VIRTUAL_TA_URL || 'http://host.docker.internal:8001';
 const MCP_ENDPOINT = `${VIRTUAL_TA_URL}/mcp`;
 
-// Remote client — connects to the Virtual TA HTTP MCP endpoint
-const remoteTransport = new StreamableHTTPClientTransport(new URL(MCP_ENDPOINT));
+// Per-user agent token. ChatCSE's combined verifier accepts EITHER a Supabase
+// JWT or one of these (HS256, signed by the backend). Provisioned per
+// container via the admin endpoint; absence is OK in pure-dev mode where
+// the MCP falls through to the agent:default user.
+const CHATCSE_AGENT_TOKEN = process.env.CHATCSE_AGENT_TOKEN || '';
+
+// Default tool-call ceiling — the orchestrator with modality=SLIDES takes
+// 90–120s. The MCP SDK default is 60s; bump to 3 minutes to leave headroom
+// without burying real failures.
+const TOOL_CALL_TIMEOUT_MS = Number(process.env.VIRTUAL_TA_TOOL_TIMEOUT_MS) || 180_000;
+
+const remoteTransport = new StreamableHTTPClientTransport(new URL(MCP_ENDPOINT), {
+  requestInit: CHATCSE_AGENT_TOKEN
+    ? { headers: { Authorization: `Bearer ${CHATCSE_AGENT_TOKEN}` } }
+    : undefined,
+});
 const remoteClient = new Client({ name: 'virtual-ta-bridge', version: '1.0.0' });
 
 // Local server — exposes tools via stdio to the agent container
@@ -77,7 +91,11 @@ async function init() {
   localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     try {
-      const result = await remoteClient.callTool({ name, arguments: args });
+      const result = await remoteClient.callTool(
+        { name, arguments: args },
+        undefined,
+        { timeout: TOOL_CALL_TIMEOUT_MS }
+      );
       return result;
     } catch (err) {
       return {
