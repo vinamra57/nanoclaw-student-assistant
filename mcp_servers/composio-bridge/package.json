@@ -1,0 +1,10 @@
+{
+  "name": "composio-bridge",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Stdio-to-HTTP MCP bridge for Composio's hosted MCP server",
+  "main": "bridge.mjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
