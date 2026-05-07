@@ -4,17 +4,57 @@ Personal EdStem MCP server.
 Exposes Ed Discussion tools scoped to the student's own API token.
 Runs as a standalone MCP server that NanoClaw connects to via mcporter.
 
-Usage:
+Usage (stdio, default — production VM with venv mount):
     ED_API_TOKEN=<token> ED_COURSE_ID=<id> python -m mcp_servers.edstem.server
+
+Usage (HTTP, cross-platform — dev on Mac, agent container connects to host):
+    EDSTEM_TRANSPORT=streamable-http EDSTEM_PORT=8765 \\
+    ED_API_TOKEN=<token> ED_COURSE_ID=<id> \\
+    python -m mcp_servers.edstem.server
 """
 
 import os
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from mcp_servers.edstem.ed_client import EdClient
 
-mcp = FastMCP("EdStem Personal")
+# Bind loopback by default — the agent container reaches us via
+# host.docker.internal, which Docker maps to the host's loopback interface.
+# Exposing on 0.0.0.0 would let any host on the network call this server
+# with the student's Ed token.
+_HOST = os.environ.get("EDSTEM_HOST", "127.0.0.1")
+_PORT = int(os.environ.get("EDSTEM_PORT", "8765"))
+
+# FastMCP enables DNS-rebinding protection by default, allowing only Host
+# headers matching localhost/loopback. Agent containers reach us through
+# the docker host gateway with `Host: host.docker.internal:<port>`, which
+# the default policy rejects with HTTP 421. We add that one host while
+# keeping protection on for everything else.
+_ALLOWED_HOSTS = [
+    "127.0.0.1:*",
+    "localhost:*",
+    "[::1]:*",
+    "host.docker.internal:*",
+]
+_ALLOWED_ORIGINS = [
+    "http://127.0.0.1:*",
+    "http://localhost:*",
+    "http://[::1]:*",
+    "http://host.docker.internal:*",
+]
+
+mcp = FastMCP(
+    "EdStem Personal",
+    host=_HOST,
+    port=_PORT,
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_ALLOWED_HOSTS,
+        allowed_origins=_ALLOWED_ORIGINS,
+    ),
+)
 
 
 def _get_client() -> EdClient:
@@ -175,4 +215,9 @@ def get_ed_unread(limit: int = 20) -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    transport = os.environ.get("EDSTEM_TRANSPORT", "stdio")
+    if transport not in ("stdio", "sse", "streamable-http"):
+        raise SystemExit(
+            f"EDSTEM_TRANSPORT must be one of stdio|sse|streamable-http, got {transport!r}"
+        )
+    mcp.run(transport=transport)
