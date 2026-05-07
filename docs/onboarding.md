@@ -60,6 +60,19 @@ to identify which student is messaging.
 
 ### Provisioning a student VM
 
+First, issue the per-student `CHATCSE_AGENT_TOKEN` from ChatCSE
+(the container uses it to authenticate to the Virtual TA's MCP):
+
+```bash
+curl -X POST https://chatcse.example.com/api/admin/agent-tokens \
+  -H "Authorization: Bearer $YOUR_SUPABASE_ADMIN_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": <CHATCSE_USER_ID_FOR_THIS_STUDENT>, "container_id": "alice-cse452"}' \
+  | jq -r .token
+```
+
+Then provision the VM:
+
 ```bash
 cd provisioning/
 
@@ -71,9 +84,10 @@ cd provisioning/
   --discord-token "MTQ4OD..." \
   --anthropic-key "sk-ant-..." \
   --virtual-ta-url "https://chatcse.example.com" \
+  --chatcse-agent-token "eyJhbGciOiJIUzI1NiI..." \
   [--ed-token "<student's ed token>"] \
   [--ed-course-id 12345] \
-  [--composio-key "<composio-mcp-key>"]
+  [--composio-key "<composio-admin-api-key>"]
 ```
 
 The script installs Docker, Node 22, Python 3.13, clones
@@ -81,6 +95,10 @@ The script installs Docker, Node 22, Python 3.13, clones
 NanoClaw's onboard flow non-interactively with the student's
 Anthropic key, registers the Discord channel, then clones this repo
 to `~/student-assistant` for the custom MCP servers.
+
+Per-provider keys (Edstem, Canvas, Gradescope) can be supplied
+either at provisioning (above) OR by the student via slash commands
+once the bot is online — see [docs/late-binding-keys.md](./late-binding-keys.md).
 
 Total wall time is 5–10 minutes per VM. The VM is
 billable from this point — `gcloud compute instances stop <vm-name>`
@@ -179,7 +197,36 @@ what the bot can do for you.
 
 1. Go to https://edstem.org/us/settings/api-tokens
 2. Click **New Token** → copy the token
-3. DM the bot: `/connect-ed <paste-token-here>`
+3. In a DM with the bot, type `/edstem-key` (Discord shows the slash
+   command as you type) → press Enter → a private modal opens → paste
+   your token → submit. The token never appears in chat history.
+
+**Canvas** (optional — assignments + grades)
+
+1. Canvas → Account → Settings → **+ New Access Token**
+2. DM the bot: `/canvas-key <paste-token-here>`
+
+**Gradescope** (optional — best-effort, no public API; SSO accounts need
+a one-time setup)
+
+If your Gradescope account is SSO-only (all UW students are by default —
+you've never typed a Gradescope-specific password), Gradescope will reject
+the API call. You need to set a Gradescope-local password first:
+
+1. **Open https://www.gradescope.com/reset_password in an incognito /
+   private browser window.** Critical: in your regular browser your
+   active UW NetID session will hijack the redirect.
+2. Enter your school email; set any password from the email Gradescope
+   sends. SSO still works after this — you just gain a second way in.
+3. DM the bot: `/gradescope-key <your-email>:<that-local-password>`
+4. Same delete-after reminder applies.
+
+If your Gradescope account already has a local password (rare for SSO
+schools), just use that directly with `/gradescope-key`.
+
+See [docs/late-binding-keys.md](./late-binding-keys.md) for what each
+slash command does under the hood (encrypted-at-rest in ChatCSE,
+audit-logged, never sent to the LLM).
 
 **Canvas / Google Workspace** (optional — for assignments, calendar,
 Docs)
@@ -235,13 +282,18 @@ Discord Gateway ── (your bot token) ──► your VM
                             ▼
                    Claude SDK + mcporter
                             │
-              ┌─────────────┼──────────────────────┐
-              ▼             ▼                      ▼
-   stdio MCP: EdStem    HTTPS MCP: Virtual TA   stdio MCP: Gradescope
-   (your Ed token)      (per-user auth via      (Canvas LTI)
-                        Supabase JWT, owned-
-                        response gate, signed
-                        media URLs)
+       ┌────┬────────┬──────┴───────┬──────────┬──────────┐
+       ▼    ▼        ▼              ▼          ▼          ▼
+   virtual-ta  edstem        composio       canvas    gradescope
+    bridge     bridge         bridge         bridge     bridge
+       │       │                │             │          │
+       │       │                │             │          │
+   ChatCSE  host MCP        Composio        host MCP  host MCP
+   /mcp     :8765 ──→ Ed     /v3/mcp/<id>   :8766 ──  :8767 ──
+   (agent_  (your Ed         ?user_id=<id>  > Canvas  > Gradescope
+   token    token)           x-api-key:     REST API  HTML scraping
+   auth)                     <admin>        (your     (your
+                                            token)    cookie)
                             │
                             ▼
                    ChatCSE backend (FastAPI, Postgres)
