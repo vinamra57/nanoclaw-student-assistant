@@ -115,6 +115,11 @@ async function init() {
 }
 
 // toolkit_slug → auth_config_id, populated lazily on first auth-missing error.
+//
+// Hazard (D5): cache lifetime is the bridge process. New auth_configs added
+// in the Composio dashboard mid-session won't be seen until the next
+// container spawn. Acceptable since bridges are short-lived; if cache
+// staleness ever becomes a real issue, add a TTL.
 let _authConfigByToolkit = null;
 
 async function _loadAuthConfigs() {
