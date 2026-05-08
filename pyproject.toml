@@ -33,6 +33,10 @@ dev = [
     # mypy emits `import-untyped` even when ignore_missing_imports is on,
     # for libs whose maintainers ship stubs separately.
     "types-requests>=2.31",
+    # Tests for the Gradescope MCP server import gradescopeapi via gs_client;
+    # CI needs it. (Listed below in `gradescope` extra too for runtime-only
+    # installs that don't want pytest et al.)
+    "gradescopeapi>=0.2",
 ]
 gradescope = [
     "gradescopeapi>=0.2",
