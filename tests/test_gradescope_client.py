@@ -53,15 +53,17 @@ def test_list_courses_parses_get_courses_info():
 
     info = {"student": {"99": FakeCourse(name="CSE 452", term="Spring 2026")}}
 
-    with patch(
-        "gradescopeapi.classes.connection.GSConnection",
-        return_value=fake_conn,
-    ), patch(
-        "mcp_servers.gradescope.gs_client.GSConnection",
-        return_value=fake_conn,
-        create=True,
-    ), patch(
-        "gradescopeapi.classes.account.get_courses_info", return_value=info
+    with (
+        patch(
+            "gradescopeapi.classes.connection.GSConnection",
+            return_value=fake_conn,
+        ),
+        patch(
+            "mcp_servers.gradescope.gs_client.GSConnection",
+            return_value=fake_conn,
+            create=True,
+        ),
+        patch("gradescopeapi.classes.account.get_courses_info", return_value=info),
     ):
         rows = c.list_courses()
     assert len(rows) == 1
@@ -87,12 +89,15 @@ def test_list_assignments_calls_correct_url():
     class A:
         name: str
 
-    with patch(
-        "gradescopeapi.classes.connection.GSConnection",
-        return_value=fake_conn,
-    ), patch(
-        "gradescopeapi.classes.account.get_assignments_student_view",
-        return_value=[A(name="PA1"), A(name="PA2")],
+    with (
+        patch(
+            "gradescopeapi.classes.connection.GSConnection",
+            return_value=fake_conn,
+        ),
+        patch(
+            "gradescopeapi.classes.account.get_assignments_student_view",
+            return_value=[A(name="PA1"), A(name="PA2")],
+        ),
     ):
         rows = c.list_assignments("99")
     assert fake_session.get.called

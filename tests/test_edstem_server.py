@@ -1,37 +1,54 @@
-"""Tests for the EdStem MCP server tools."""
+"""Tests for the EdStem MCP server tools (multi-course)."""
 
 from unittest.mock import patch
 
-from mcp_servers.edstem.server import (
-    get_ed_announcements,
-    get_ed_pinned,
-    get_ed_unread,
-    search_ed,
-)
+
+@patch.dict("os.environ", {"ED_API_TOKEN": ""})
+def test_list_ed_courses_not_configured():
+    from mcp_servers.edstem.server import list_ed_courses
+
+    result = list_ed_courses()
+    assert "not configured" in result.lower()
 
 
-@patch.dict("os.environ", {"ED_API_TOKEN": "", "ED_COURSE_ID": "0"})
+@patch.dict("os.environ", {"ED_API_TOKEN": ""})
 def test_search_ed_not_configured():
-    result = search_ed("test")
-    assert "not configured" in result
+    from mcp_servers.edstem.server import search_ed
+
+    result = search_ed(99, "test")
+    assert "not configured" in result.lower()
 
 
-@patch.dict("os.environ", {"ED_API_TOKEN": "", "ED_COURSE_ID": "0"})
+@patch.dict("os.environ", {"ED_API_TOKEN": ""})
 def test_announcements_not_configured():
-    result = get_ed_announcements()
-    assert "not configured" in result
+    from mcp_servers.edstem.server import get_ed_announcements
+
+    result = get_ed_announcements(99)
+    assert "not configured" in result.lower()
 
 
-@patch.dict("os.environ", {"ED_API_TOKEN": "", "ED_COURSE_ID": "0"})
+@patch.dict("os.environ", {"ED_API_TOKEN": ""})
 def test_pinned_not_configured():
-    result = get_ed_pinned()
-    assert "not configured" in result
+    from mcp_servers.edstem.server import get_ed_pinned
+
+    result = get_ed_pinned(99)
+    assert "not configured" in result.lower()
 
 
-@patch.dict("os.environ", {"ED_API_TOKEN": "", "ED_COURSE_ID": "0"})
+@patch.dict("os.environ", {"ED_API_TOKEN": ""})
 def test_unread_not_configured():
-    result = get_ed_unread()
-    assert "not configured" in result
+    from mcp_servers.edstem.server import get_ed_unread
+
+    result = get_ed_unread(99)
+    assert "not configured" in result.lower()
+
+
+@patch.dict("os.environ", {"ED_API_TOKEN": ""})
+def test_get_thread_not_configured():
+    from mcp_servers.edstem.server import get_ed_thread
+
+    result = get_ed_thread(12345)
+    assert "not configured" in result.lower()
 
 
 def test_server_binds_loopback_and_8765_by_default():
