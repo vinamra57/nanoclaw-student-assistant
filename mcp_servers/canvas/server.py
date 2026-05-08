@@ -4,13 +4,18 @@ Exposes a small set of read-only Canvas tools scoped to the student's own
 API token + institution. Wired into NanoClaw via a stdio→HTTP bridge in
 mcp_servers/canvas-bridge/, same pattern as edstem.
 
+Credentials come from ChatCSE on demand via the
+`mcp_servers._shared.credentials` helper — no per-student secrets in this
+process's env. Both the Canvas API token (value) and base_url (metadata)
+travel together. Students rotate via Discord `/canvas-key`.
+
 Usage (stdio, default):
-    CANVAS_API_TOKEN=<token> CANVAS_BASE_URL=https://canvas.uw.edu \\
+    CHATCSE_AGENT_TOKEN=<token> CHATCSE_BASE_URL=<url> \\
     python -m mcp_servers.canvas.server
 
 Usage (HTTP, cross-platform dev):
     CANVAS_TRANSPORT=streamable-http CANVAS_PORT=8766 \\
-    CANVAS_API_TOKEN=<token> CANVAS_BASE_URL=https://canvas.uw.edu \\
+    CHATCSE_AGENT_TOKEN=<token> CHATCSE_BASE_URL=<url> \\
     python -m mcp_servers.canvas.server
 """
 
@@ -55,16 +60,28 @@ mcp = FastMCP(
 
 
 def _client() -> CanvasClient:
-    return CanvasClient(
-        api_token=os.environ.get("CANVAS_API_TOKEN", ""),
-        base_url=os.environ.get("CANVAS_BASE_URL", ""),
-    )
+    """Build a CanvasClient from the student's credential in ChatCSE.
+
+    Fetches both the token and the institution base_url (stored in the
+    credential's metadata, e.g. {"base_url": "https://canvas.uw.edu"}).
+    No env var dependency.
+    """
+    from mcp_servers._shared.credentials import get_provider_credential
+
+    cred = get_provider_credential("canvas")
+    if not cred:
+        return CanvasClient(api_token="", base_url="")
+    token, metadata = cred
+    base_url = metadata.get("base_url", "") if isinstance(metadata, dict) else ""
+    return CanvasClient(api_token=token, base_url=base_url)
 
 
 def _not_configured() -> str:
     return (
-        "Canvas is not configured. Set CANVAS_API_TOKEN and CANVAS_BASE_URL, "
-        "or DM `/canvas-key <token>` to your bot to wire it from chat."
+        "Canvas isn't connected yet. To connect: in Discord, type "
+        "`/canvas-key`, paste your Canvas access token (from Canvas → "
+        "Account → Settings → New Access Token) into the modal, and "
+        "submit. The token never appears in chat history."
     )
 
 

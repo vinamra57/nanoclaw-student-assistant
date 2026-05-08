@@ -1,9 +1,10 @@
 """Canvas LMS API client for the personal Canvas MCP server.
 
-Talks directly to the institution's Canvas REST API at
-`{CANVAS_BASE_URL}/api/v1`. Each student supplies their own CANVAS_API_TOKEN
-(generated from their Canvas profile under Approved Integrations → New Access
-Token); all calls are scoped to that user.
+Talks directly to the institution's Canvas REST API at `<base_url>/api/v1`.
+The base_url + api_token are fetched from ChatCSE on demand by the MCP
+server (see mcp_servers/_shared/credentials.py); students supply their
+own token via Discord `/canvas-key` (Canvas profile → Approved
+Integrations → New Access Token). All calls are scoped to that user.
 
 Mirrors the shape of `mcp_servers/edstem/ed_client.py` deliberately:
 construct with config, expose `is_configured`, return [] on failure with a

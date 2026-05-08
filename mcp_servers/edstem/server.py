@@ -6,12 +6,20 @@ student is enrolled in, then drills into a specific course via
 `search_ed`, `get_ed_announcements`, etc. (all per-course tools take
 `course_id` as a required parameter).
 
-Usage (stdio, default — production VM with venv mount):
-    ED_API_TOKEN=<token> python -m mcp_servers.edstem.server
+Credentials come from ChatCSE on demand via the `mcp_servers._shared.credentials`
+helper — no per-student secrets in this process's env. The only secret
+this server needs is `CHATCSE_AGENT_TOKEN` (which authenticates it to
+ChatCSE for the credential fetch). Students rotate their Edstem token via
+the Discord `/edstem-key` command, and the change propagates within the
+helper's 5-minute cache TTL.
+
+Usage (stdio, default):
+    CHATCSE_AGENT_TOKEN=<token> CHATCSE_BASE_URL=<url> \\
+    python -m mcp_servers.edstem.server
 
 Usage (HTTP, cross-platform — dev on Mac, agent container connects to host):
     EDSTEM_TRANSPORT=streamable-http EDSTEM_PORT=8765 \\
-    ED_API_TOKEN=<token> \\
+    CHATCSE_AGENT_TOKEN=<token> CHATCSE_BASE_URL=<url> \\
     python -m mcp_servers.edstem.server
 """
 
@@ -61,15 +69,25 @@ mcp = FastMCP(
 
 
 def _get_client() -> EdClient:
-    """Create an EdClient from the API token in env."""
-    return EdClient(api_token=os.environ.get("ED_API_TOKEN", ""))
+    """Build an EdClient from the student's credential in ChatCSE.
+
+    Fetches the token via the credential helper (5-min cache) — no env
+    var dependency. Returns a not-configured client when the credential
+    is missing so the tool surface degrades cleanly instead of crashing.
+    """
+    from mcp_servers._shared.credentials import get_provider_credential
+
+    cred = get_provider_credential("edstem")
+    token = cred[0] if cred else ""
+    return EdClient(api_token=token)
 
 
 def _not_configured() -> str:
     return (
-        "Ed Discussion is not configured. The student needs to set their "
-        "Ed API token via /edstem-key in Discord (or set ED_API_TOKEN in "
-        "the host env)."
+        "Ed Discussion isn't connected yet. To connect: in Discord, type "
+        "`/edstem-key`, paste your Ed API token (from "
+        "https://edstem.org/us/settings/api-tokens) into the modal, and "
+        "submit. The token never appears in chat history."
     )
 
 

@@ -13,10 +13,15 @@ set -euo pipefail
 #     --discord-token <DISCORD_BOT_TOKEN> \
 #     --anthropic-key <ANTHROPIC_API_KEY> \
 #     --virtual-ta-url <VIRTUAL_TA_MCP_URL> \
-#     [--ed-token <ED_API_TOKEN>] \
 #     [--composio-key <COMPOSIO_API_KEY>] \
 #     [--machine-type <TYPE>] \
 #     [--disk-size <GB>]
+#
+# NOTE: Per-provider credentials (Edstem token, Canvas token+base_url,
+# Gradescope email:password) are NOT provisioned here. Students set them
+# from Discord after onboarding via /edstem-key, /canvas-key,
+# /gradescope-key — values are stored encrypted in ChatCSE and fetched on
+# demand by the host MCP servers using CHATCSE_AGENT_TOKEN.
 
 PROJECT=""
 ZONE=""
@@ -26,7 +31,6 @@ DISCORD_TOKEN=""
 ANTHROPIC_KEY=""
 VIRTUAL_TA_URL=""
 CHATCSE_AGENT_TOKEN=""
-ED_TOKEN=""
 COMPOSIO_KEY=""
 MACHINE_TYPE="e2-medium"
 DISK_SIZE="20"
@@ -41,7 +45,6 @@ while [[ $# -gt 0 ]]; do
     --anthropic-key) ANTHROPIC_KEY="$2"; shift 2 ;;
     --virtual-ta-url) VIRTUAL_TA_URL="$2"; shift 2 ;;
     --chatcse-agent-token) CHATCSE_AGENT_TOKEN="$2"; shift 2 ;;
-    --ed-token) ED_TOKEN="$2"; shift 2 ;;
     --composio-key) COMPOSIO_KEY="$2"; shift 2 ;;
     --machine-type) MACHINE_TYPE="$2"; shift 2 ;;
     --disk-size) DISK_SIZE="$2"; shift 2 ;;
@@ -70,7 +73,7 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   echo "  --discord-token <DISCORD_BOT_TOKEN> \\"
   echo "  --anthropic-key <ANTHROPIC_API_KEY> \\"
   echo "  --virtual-ta-url <VIRTUAL_TA_MCP_URL> \\"
-  echo "  [--ed-token <ED_API_TOKEN>] \\"
+  echo "  [--chatcse-agent-token <CHATCSE_AGENT_TOKEN>] \\"
   echo "  [--composio-key <COMPOSIO_API_KEY>] \\"
   echo "  [--machine-type <TYPE>]    (default: e2-medium) \\"
   echo "  [--disk-size <GB>]         (default: 20)"
@@ -111,7 +114,7 @@ echo "==> Running setup (this takes 5-10 minutes)"
 gcloud compute ssh "$VM_NAME" --project="$PROJECT" --zone="$ZONE" -- \
   "chmod +x ~/setup-student.sh && ~/setup-student.sh \
     '$DISCORD_TOKEN' '$ANTHROPIC_KEY' '$VIRTUAL_TA_URL' \
-    '$ED_TOKEN' '$COMPOSIO_KEY' '$CHATCSE_AGENT_TOKEN'"
+    '$COMPOSIO_KEY' '$CHATCSE_AGENT_TOKEN'"
 
 echo ""
 echo "============================================"

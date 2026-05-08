@@ -39,8 +39,7 @@ const EDSTEM_HTTP_URL =
 const TOOL_CALL_TIMEOUT_MS =
   Number(process.env.EDSTEM_TOOL_TIMEOUT_MS) || 30_000;
 
-const remoteTransport = new StreamableHTTPClientTransport(new URL(EDSTEM_HTTP_URL));
-const remoteClient = new Client({ name: 'edstem-bridge', version: '1.0.0' });
+let remoteClient = null;
 
 const localServer = new Server(
   { name: 'edstem', version: '1.0.0' },
@@ -49,9 +48,35 @@ const localServer = new Server(
 
 let remoteTools = [];
 
+// Re-establish the upstream MCP session — used both at startup and after
+// session-loss errors (host MCP server restarts, network blip, etc.).
+async function connectUpstream() {
+  if (remoteClient) {
+    try { await remoteClient.close(); } catch {}
+  }
+  const transport = new StreamableHTTPClientTransport(new URL(EDSTEM_HTTP_URL));
+  remoteClient = new Client({ name: 'edstem-bridge', version: '1.0.0' });
+  await remoteClient.connect(transport);
+}
+
+// True for errors that mean "your session is gone, reconnect and retry".
+// Streamable-HTTP MCP returns 404 on stale session ids; we also catch
+// closed-transport variants seen when the upstream process restarted.
+function isSessionLoss(err) {
+  const m = String(err?.message || '').toLowerCase();
+  return (
+    m.includes('session') ||
+    m.includes('404') ||
+    m.includes('not found') ||
+    m.includes('closed') ||
+    m.includes('econnreset') ||
+    m.includes('connection refused')
+  );
+}
+
 async function init() {
   try {
-    await remoteClient.connect(remoteTransport);
+    await connectUpstream();
     const toolsResult = await remoteClient.listTools();
     remoteTools = toolsResult.tools || [];
     console.error(
@@ -66,7 +91,7 @@ async function init() {
       {
         name: 'search_ed',
         description:
-          'Search Ed Discussion (OFFLINE — host EdStem MCP unreachable; ask the user to set ED_API_TOKEN/ED_COURSE_ID and restart the host server).',
+          'Search Ed Discussion (OFFLINE — host EdStem MCP unreachable; the host process needs to be restarted, or the student needs to set their Edstem token via Discord `/edstem-key`).',
         inputSchema: {
           type: 'object',
           properties: {
@@ -84,18 +109,34 @@ async function init() {
 
   localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    const callOnce = () => remoteClient.callTool(
+      { name, arguments: args },
+      undefined,
+      { timeout: TOOL_CALL_TIMEOUT_MS }
+    );
     try {
-      const result = await remoteClient.callTool(
-        { name, arguments: args },
-        undefined,
-        { timeout: TOOL_CALL_TIMEOUT_MS }
-      );
-      return result;
+      return await callOnce();
     } catch (err) {
-      return {
-        content: [{ type: 'text', text: `Error calling EdStem: ${err.message}` }],
-        isError: true,
-      };
+      if (!isSessionLoss(err)) {
+        return {
+          content: [{ type: 'text', text: `Error calling EdStem: ${err.message}` }],
+          isError: true,
+        };
+      }
+      console.error(
+        `[edstem-bridge] Upstream session lost (${err.message}); reconnecting and retrying once.`
+      );
+      try {
+        await connectUpstream();
+        const toolsResult = await remoteClient.listTools();
+        remoteTools = toolsResult.tools || [];
+        return await callOnce();
+      } catch (retryErr) {
+        return {
+          content: [{ type: 'text', text: `Error calling EdStem after reconnect: ${retryErr.message}` }],
+          isError: true,
+        };
+      }
     }
   });
 

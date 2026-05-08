@@ -27,8 +27,7 @@ const CANVAS_HTTP_URL =
 const TOOL_CALL_TIMEOUT_MS =
   Number(process.env.CANVAS_TOOL_TIMEOUT_MS) || 30_000;
 
-const remoteTransport = new StreamableHTTPClientTransport(new URL(CANVAS_HTTP_URL));
-const remoteClient = new Client({ name: 'canvas-bridge', version: '1.0.0' });
+let remoteClient = null;
 
 const localServer = new Server(
   { name: 'canvas', version: '1.0.0' },
@@ -37,9 +36,31 @@ const localServer = new Server(
 
 let remoteTools = [];
 
+// Re-establish the upstream MCP session — see edstem-bridge for rationale.
+async function connectUpstream() {
+  if (remoteClient) {
+    try { await remoteClient.close(); } catch {}
+  }
+  const transport = new StreamableHTTPClientTransport(new URL(CANVAS_HTTP_URL));
+  remoteClient = new Client({ name: 'canvas-bridge', version: '1.0.0' });
+  await remoteClient.connect(transport);
+}
+
+function isSessionLoss(err) {
+  const m = String(err?.message || '').toLowerCase();
+  return (
+    m.includes('session') ||
+    m.includes('404') ||
+    m.includes('not found') ||
+    m.includes('closed') ||
+    m.includes('econnreset') ||
+    m.includes('connection refused')
+  );
+}
+
 async function init() {
   try {
-    await remoteClient.connect(remoteTransport);
+    await connectUpstream();
     const t = await remoteClient.listTools();
     remoteTools = t.tools || [];
     console.error(`[canvas-bridge] Connected. ${remoteTools.length} tools available.`);
@@ -51,7 +72,7 @@ async function init() {
       {
         name: 'list_canvas_courses',
         description:
-          'List Canvas courses (OFFLINE — host Canvas MCP unreachable; ask staff to start it or DM /canvas-key <token> after configuring CANVAS_BASE_URL).',
+          'List Canvas courses (OFFLINE — host Canvas MCP unreachable; the host process needs to be restarted, or the student needs to set their Canvas token + base_url via Discord `/canvas-key`).',
         inputSchema: { type: 'object', properties: {} },
       },
     ];
@@ -63,17 +84,34 @@ async function init() {
 
   localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    const callOnce = () => remoteClient.callTool(
+      { name, arguments: args },
+      undefined,
+      { timeout: TOOL_CALL_TIMEOUT_MS }
+    );
     try {
-      return await remoteClient.callTool(
-        { name, arguments: args },
-        undefined,
-        { timeout: TOOL_CALL_TIMEOUT_MS }
-      );
+      return await callOnce();
     } catch (err) {
-      return {
-        content: [{ type: 'text', text: `Error calling Canvas: ${err.message}` }],
-        isError: true,
-      };
+      if (!isSessionLoss(err)) {
+        return {
+          content: [{ type: 'text', text: `Error calling Canvas: ${err.message}` }],
+          isError: true,
+        };
+      }
+      console.error(
+        `[canvas-bridge] Upstream session lost (${err.message}); reconnecting and retrying once.`
+      );
+      try {
+        await connectUpstream();
+        const t = await remoteClient.listTools();
+        remoteTools = t.tools || [];
+        return await callOnce();
+      } catch (retryErr) {
+        return {
+          content: [{ type: 'text', text: `Error calling Canvas after reconnect: ${retryErr.message}` }],
+          isError: true,
+        };
+      }
     }
   });
 

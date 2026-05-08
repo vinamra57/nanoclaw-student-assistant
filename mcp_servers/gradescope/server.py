@@ -7,13 +7,20 @@ password and reuses the requests Session for subsequent calls.
 Wired into NanoClaw via stdio→HTTP bridge in mcp_servers/gradescope-bridge/,
 same pattern as Edstem and Canvas.
 
+Credentials come from ChatCSE on demand via the
+`mcp_servers._shared.credentials` helper — no per-student secrets in this
+process's env. The credential value is `email:password` (single string).
+Students rotate via Discord `/gradescope-key`. UW students with SSO-only
+accounts must first set a Gradescope-local password (see _not_configured
+hint).
+
 Usage (stdio, default):
-    GRADESCOPE_EMAIL=<email> GRADESCOPE_PASSWORD=<password> \\
+    CHATCSE_AGENT_TOKEN=<token> CHATCSE_BASE_URL=<url> \\
     python -m mcp_servers.gradescope.server
 
 Usage (HTTP, cross-platform dev):
     GRADESCOPE_TRANSPORT=streamable-http GRADESCOPE_PORT=8767 \\
-    GRADESCOPE_EMAIL=<email> GRADESCOPE_PASSWORD=<password> \\
+    CHATCSE_AGENT_TOKEN=<token> CHATCSE_BASE_URL=<url> \\
     python -m mcp_servers.gradescope.server
 """
 
@@ -63,9 +70,23 @@ _client: GradescopeClient | None = None
 
 
 def _get_client() -> GradescopeClient:
+    """Build a GradescopeClient from the student's credential in ChatCSE.
+
+    The credential value is stored as `email:password` (single string).
+    Cached client is reused as long as the credentials match — login is
+    expensive, so we keep the session alive across calls.
+    """
     global _client
-    email = os.environ.get("GRADESCOPE_EMAIL", "")
-    password = os.environ.get("GRADESCOPE_PASSWORD", "")
+    from mcp_servers._shared.credentials import get_provider_credential
+
+    cred = get_provider_credential("gradescope")
+    if not cred:
+        return GradescopeClient(email="", password="")
+    raw, _ = cred
+    if ":" not in raw:
+        # Credential present but malformed — surface as not-configured.
+        return GradescopeClient(email="", password="")
+    email, _, password = raw.partition(":")
     if _client is None or _client.email != email or _client.password != password:
         _client = GradescopeClient(email=email, password=password)
     return _client
@@ -73,9 +94,13 @@ def _get_client() -> GradescopeClient:
 
 def _not_configured() -> str:
     return (
-        "Gradescope is not configured. Set GRADESCOPE_EMAIL and "
-        "GRADESCOPE_PASSWORD, or DM `/gradescope-key <email>:<password>` "
-        "to your bot."
+        "Gradescope isn't connected yet. UW students need to set a "
+        "Gradescope-local password first: open "
+        "https://www.gradescope.com/reset_password in an INCOGNITO browser "
+        "(regular browser hijacks the redirect via your active SSO "
+        "session). Then in Discord, type `/gradescope-key`, enter "
+        "`<your-email>:<that-new-password>` in the modal, and submit. The "
+        "value never appears in chat history."
     )
 
 

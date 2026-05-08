@@ -6,10 +6,12 @@ heavy lifting (BeautifulSoup parsers for the dashboard / course pages)
 comes from the `gradescopeapi` package; we wrap login + a small set of
 read-only fetches.
 
-Credentials are passed via env (GRADESCOPE_EMAIL + GRADESCOPE_PASSWORD).
-The MCP server must NEVER log either value, and the helper here makes
-no attempt to print them — the only place plaintext touches the wire is
-the login POST.
+Credentials are fetched from ChatCSE on demand by the MCP server (see
+mcp_servers/_shared/credentials.py) and passed to this client's
+constructor as separate `email` and `password` arguments — they are NOT
+read from env. The MCP server must NEVER log either value, and the
+helper here makes no attempt to print them — the only place plaintext
+touches the wire is the login POST.
 """
 
 import logging
