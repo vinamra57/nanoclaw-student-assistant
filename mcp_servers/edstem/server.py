@@ -1,18 +1,21 @@
 """
 Personal EdStem MCP server.
 
-Exposes Ed Discussion tools scoped to the student's own API token.
-Runs as a standalone MCP server that NanoClaw connects to via mcporter.
+Multi-course: agent first calls `list_ed_courses` to discover what the
+student is enrolled in, then drills into a specific course via
+`search_ed`, `get_ed_announcements`, etc. (all per-course tools take
+`course_id` as a required parameter).
 
 Usage (stdio, default — production VM with venv mount):
-    ED_API_TOKEN=<token> ED_COURSE_ID=<id> python -m mcp_servers.edstem.server
+    ED_API_TOKEN=<token> python -m mcp_servers.edstem.server
 
 Usage (HTTP, cross-platform — dev on Mac, agent container connects to host):
     EDSTEM_TRANSPORT=streamable-http EDSTEM_PORT=8765 \\
-    ED_API_TOKEN=<token> ED_COURSE_ID=<id> \\
+    ED_API_TOKEN=<token> \\
     python -m mcp_servers.edstem.server
 """
 
+import json
 import os
 
 from mcp.server.fastmcp import FastMCP
@@ -58,166 +61,136 @@ mcp = FastMCP(
 
 
 def _get_client() -> EdClient:
-    """Create an EdClient from environment variables."""
-    token = os.environ.get("ED_API_TOKEN", "")
-    course_id_str = os.environ.get("ED_COURSE_ID", "0")
-    try:
-        course_id = int(course_id_str)
-    except ValueError:
-        course_id = 0
-    return EdClient(api_token=token, course_id=course_id)
+    """Create an EdClient from the API token in env."""
+    return EdClient(api_token=os.environ.get("ED_API_TOKEN", ""))
 
 
-def _format_thread(t: dict) -> str:
-    """Format a thread dict for display."""
-    title = t.get("title", "Untitled")
-    category = t.get("category", "")
-    header = f"**{title}** [{category}]" if category else f"**{title}**"
-
-    parts = [header]
-    if url := t.get("url", ""):
-        parts.append(f"Link: {url}")
-    if created := t.get("created_at", ""):
-        parts.append(f"Posted: {created}")
-    if content := t.get("content", ""):
-        parts.append(content[:1000] + "..." if len(content) > 1000 else content)
-    return "\n".join(parts)
+def _not_configured() -> str:
+    return (
+        "Ed Discussion is not configured. The student needs to set their "
+        "Ed API token via /edstem-key in Discord (or set ED_API_TOKEN in "
+        "the host env)."
+    )
 
 
 @mcp.tool()
-def search_ed(query: str, limit: int = 5) -> str:
-    """Search Ed Discussion threads by keyword.
+def list_ed_courses() -> str:
+    """List the student's active Ed Discussion courses.
+
+    Use this first to find the course_id for any other Ed tool. Returns
+    JSON with id/code/name/year/session/role for each enrollment.
+    """
+    c = _get_client()
+    if not c.is_configured:
+        return _not_configured()
+    courses = c.list_courses()
+    if not courses:
+        return "No active Ed courses found for this token."
+    return json.dumps(courses, indent=2)
+
+
+@mcp.tool()
+def search_ed(course_id: int, query: str, limit: int = 5) -> str:
+    """Search Ed Discussion threads in one course by keyword.
 
     Use this to find relevant student questions, staff answers,
     announcements, or any course-related discussion.
 
     Args:
-        query: Search keywords (e.g., "midterm", "late policy", "office hours")
-        limit: Maximum number of results (default 5)
+        course_id: Numeric Ed course id (from list_ed_courses).
+        query: Search keywords (e.g., "midterm", "late policy").
+        limit: Maximum number of results (default 5).
     """
-    client = _get_client()
-    if not client.is_configured:
-        return "Ed Discussion is not configured. Set ED_API_TOKEN and ED_COURSE_ID."
+    c = _get_client()
+    if not c.is_configured:
+        return _not_configured()
 
-    threads = client.search_threads(query, limit=min(limit, 20))
+    threads = c.search_threads(course_id, query, limit=min(limit, 20))
     if not threads:
-        return f"No Ed Discussion threads found for '{query}'."
-
-    results = [f"Found {len(threads)} thread(s) for '{query}':\n"]
-    for t in threads:
-        results.append(_format_thread(t))
-        results.append("---")
-    return "\n".join(results)
+        return f"No Ed threads in course {course_id} for '{query}'."
+    return json.dumps(threads, indent=2)
 
 
 @mcp.tool()
-def get_ed_announcements(limit: int = 10) -> str:
-    """Get recent course announcements from Ed Discussion.
-
-    Announcements contain important updates about deadlines, policy changes,
-    exam info, and other course logistics.
+def get_ed_announcements(course_id: int, limit: int = 10) -> str:
+    """Get recent announcements from one Ed course.
 
     Args:
-        limit: Maximum number of announcements (default 10)
+        course_id: Numeric Ed course id (from list_ed_courses).
+        limit: Maximum number of announcements (default 10).
     """
-    client = _get_client()
-    if not client.is_configured:
-        return "Ed Discussion is not configured. Set ED_API_TOKEN and ED_COURSE_ID."
+    c = _get_client()
+    if not c.is_configured:
+        return _not_configured()
 
-    announcements = client.get_announcements(limit=limit)
-    if not announcements:
-        return "No announcements found."
-
-    results = [f"Found {len(announcements)} announcement(s):\n"]
-    for a in announcements:
-        results.append(_format_thread(a))
-        results.append("---")
-    return "\n".join(results)
+    items = c.get_announcements(course_id, limit=limit)
+    if not items:
+        return f"No announcements in course {course_id}."
+    return json.dumps(items, indent=2)
 
 
 @mcp.tool()
-def get_ed_pinned() -> str:
-    """Get pinned threads from Ed Discussion.
+def get_ed_pinned(course_id: int) -> str:
+    """Get pinned threads from one Ed course.
 
-    Pinned threads typically contain important course information like
-    syllabus links, resource lists, FAQ, and logistics.
+    Args:
+        course_id: Numeric Ed course id (from list_ed_courses).
     """
-    client = _get_client()
-    if not client.is_configured:
-        return "Ed Discussion is not configured. Set ED_API_TOKEN and ED_COURSE_ID."
+    c = _get_client()
+    if not c.is_configured:
+        return _not_configured()
 
-    pinned = client.get_pinned_threads()
-    if not pinned:
-        return "No pinned threads found."
-
-    results = [f"Found {len(pinned)} pinned thread(s):\n"]
-    for p in pinned:
-        results.append(_format_thread(p))
-        results.append("---")
-    return "\n".join(results)
+    items = c.get_pinned_threads(course_id)
+    if not items:
+        return f"No pinned threads in course {course_id}."
+    return json.dumps(items, indent=2)
 
 
 @mcp.tool()
 def get_ed_thread(thread_id: int) -> str:
-    """Get the full content of a specific Ed Discussion thread.
+    """Get the full content of a specific Ed thread.
 
-    Use this after search_ed to read the full details of a thread,
-    including staff answers and comments.
+    Use this after search_ed to read full details including answers
+    and comments. Thread IDs are globally unique across courses, so no
+    course_id is needed.
 
     Args:
-        thread_id: The numeric ID of the thread
+        thread_id: Numeric Ed thread id.
     """
-    client = _get_client()
-    if not client.is_configured:
-        return "Ed Discussion is not configured. Set ED_API_TOKEN and ED_COURSE_ID."
+    c = _get_client()
+    if not c.is_configured:
+        return _not_configured()
 
-    thread = client.get_thread_content(thread_id)
+    thread = c.get_thread_content(thread_id)
     if not thread:
         return f"Thread {thread_id} not found."
-
-    parts = [_format_thread(thread)]
-    answers = thread.get("answers", [])
-    comments = thread.get("comments", [])
-    if answers:
-        parts.append("\n**Answers:**")
-        for i, a in enumerate(answers, 1):
-            parts.append(f"{i}. {a}")
-    if comments:
-        parts.append("\n**Comments:**")
-        for i, c in enumerate(comments, 1):
-            parts.append(f"{i}. {c}")
-    return "\n".join(parts)
+    return json.dumps(thread, indent=2)
 
 
 @mcp.tool()
-def get_ed_unread(limit: int = 20) -> str:
-    """Get unread threads from Ed Discussion.
-
-    Shows new or updated threads that haven't been read yet.
-    Useful for answering "what's new on Ed" or "any updates".
+def get_ed_unread(course_id: int, limit: int = 20) -> str:
+    """Get unread threads in one Ed course.
 
     Args:
-        limit: Maximum number of unread threads (default 20)
+        course_id: Numeric Ed course id (from list_ed_courses).
+        limit: Maximum number of unread threads (default 20).
     """
-    client = _get_client()
-    if not client.is_configured:
-        return "Ed Discussion is not configured. Set ED_API_TOKEN and ED_COURSE_ID."
+    c = _get_client()
+    if not c.is_configured:
+        return _not_configured()
 
-    threads = client.get_unread_threads(limit=limit)
+    threads = c.get_unread_threads(course_id, limit=limit)
     if not threads:
-        return "No unread threads found — you're all caught up!"
-
-    results = [f"Found {len(threads)} unread thread(s):\n"]
-    for t in threads:
-        results.append(_format_thread(t))
-        results.append("---")
-    return "\n".join(results)
+        return f"No unread threads in course {course_id} — all caught up."
+    return json.dumps(threads, indent=2)
 
 
 if __name__ == "__main__":
+    from typing import Literal, cast
+
     transport = os.environ.get("EDSTEM_TRANSPORT", "stdio")
     if transport not in ("stdio", "sse", "streamable-http"):
         raise SystemExit(
             f"EDSTEM_TRANSPORT must be one of stdio|sse|streamable-http, got {transport!r}"
         )
-    mcp.run(transport=transport)
+    mcp.run(transport=cast(Literal["stdio", "sse", "streamable-http"], transport))

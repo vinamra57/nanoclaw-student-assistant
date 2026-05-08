@@ -13,7 +13,6 @@ single WARN log so the MCP tool can surface a clean message.
 import html
 import logging
 import re
-from typing import Any
 
 import requests
 
@@ -44,9 +43,7 @@ class CanvasClient:
     def _get_session(self) -> requests.Session:
         if self._session is None:
             self._session = requests.Session()
-            self._session.headers.update(
-                {"Authorization": f"Bearer {self.api_token}"}
-            )
+            self._session.headers.update({"Authorization": f"Bearer {self.api_token}"})
         return self._session
 
     @staticmethod
@@ -104,7 +101,9 @@ class CanvasClient:
         if not self.is_configured:
             return []
         try:
-            params: dict[str, Any] = {"per_page": 50, "include[]": "term"}
+            # All-str values: requests' typing rejects mixed dicts but
+            # accepts dict[str, str] cleanly.
+            params: dict[str, str] = {"per_page": "50", "include[]": "term"}
             if only_active:
                 params["enrollment_state"] = "active"
             r = self._get_session().get(
@@ -116,15 +115,17 @@ class CanvasClient:
             logger.warning(f"Canvas list_courses failed: {e}")
             return []
 
-    def list_assignments(
-        self, course_id: int, *, limit: int = 25
-    ) -> list[dict]:
+    def list_assignments(self, course_id: int, *, limit: int = 25) -> list[dict]:
         if not self.is_configured:
             return []
         try:
+            params: dict[str, str] = {
+                "per_page": str(min(limit, 100)),
+                "order_by": "due_at",
+            }
             r = self._get_session().get(
                 f"{self.api_root}/courses/{course_id}/assignments",
-                params={"per_page": min(limit, 100), "order_by": "due_at"},
+                params=params,
                 timeout=15,
             )
             r.raise_for_status()
@@ -162,12 +163,13 @@ class CanvasClient:
                     "Canvas list_announcements called without course_id; returning []"
                 )
                 return []
+            params: dict[str, str] = {
+                "context_codes[]": f"course_{course_id}",
+                "per_page": str(min(limit, 50)),
+            }
             r = self._get_session().get(
                 f"{self.api_root}/announcements",
-                params={
-                    "context_codes[]": f"course_{course_id}",
-                    "per_page": min(limit, 50),
-                },
+                params=params,
                 timeout=15,
             )
             r.raise_for_status()
@@ -181,13 +183,14 @@ class CanvasClient:
         if not self.is_configured:
             return []
         try:
+            params: dict[str, str] = {
+                "student_ids[]": "self",
+                "include[]": "assignment",
+                "per_page": "100",
+            }
             r = self._get_session().get(
                 f"{self.api_root}/courses/{course_id}/students/submissions",
-                params={
-                    "student_ids[]": "self",
-                    "include[]": "assignment",
-                    "per_page": 100,
-                },
+                params=params,
                 timeout=15,
             )
             r.raise_for_status()

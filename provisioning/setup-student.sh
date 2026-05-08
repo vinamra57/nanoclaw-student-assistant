@@ -5,10 +5,10 @@ set -euo pipefail
 # Installs NanoClaw, configures the student agent, and starts the gateway.
 #
 # Usage: ./setup-student.sh <DISCORD_TOKEN> <ANTHROPIC_KEY> <VIRTUAL_TA_URL> \
-#                           [ED_TOKEN] [ED_COURSE_ID] [COMPOSIO_KEY]
+#                           [ED_TOKEN] [COMPOSIO_KEY] [CHATCSE_AGENT_TOKEN]
 
 if [[ $# -lt 3 ]]; then
-  echo "Usage: $0 <DISCORD_TOKEN> <ANTHROPIC_KEY> <VIRTUAL_TA_URL> [ED_TOKEN] [ED_COURSE_ID] [COMPOSIO_KEY] [CHATCSE_AGENT_TOKEN]"
+  echo "Usage: $0 <DISCORD_TOKEN> <ANTHROPIC_KEY> <VIRTUAL_TA_URL> [ED_TOKEN] [COMPOSIO_KEY] [CHATCSE_AGENT_TOKEN]"
   exit 1
 fi
 
@@ -16,9 +16,8 @@ DISCORD_TOKEN="$1"
 ANTHROPIC_KEY="$2"
 VIRTUAL_TA_URL="$3"
 ED_TOKEN="${4:-}"
-ED_COURSE_ID="${5:-}"
-COMPOSIO_KEY="${6:-}"
-CHATCSE_AGENT_TOKEN="${7:-}"
+COMPOSIO_KEY="${5:-}"
+CHATCSE_AGENT_TOKEN="${6:-}"
 
 echo "==> Updating system packages"
 sudo apt update && sudo apt upgrade -y
@@ -92,7 +91,6 @@ cat > "$HOME/student-assistant/.env" << ENVEOF
 VIRTUAL_TA_URL=$VIRTUAL_TA_URL
 CHATCSE_AGENT_TOKEN=$CHATCSE_AGENT_TOKEN
 ED_API_TOKEN=$ED_TOKEN
-ED_COURSE_ID=$ED_COURSE_ID
 COMPOSIO_API_KEY=$COMPOSIO_KEY
 ENVEOF
 chmod 600 "$HOME/student-assistant/.env"

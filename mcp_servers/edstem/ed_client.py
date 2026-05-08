@@ -1,8 +1,10 @@
 """
 Ed Discussion API client for the personal EdStem MCP server.
 
-Ported from ChatCSE's backend/app/admin/ed_client.py with modifications
-for standalone use in the personal agent layer.
+Carries only the student's API token; course id is passed per-call so the
+agent can list courses and then drill into whichever one the student is
+asking about. (Most students are enrolled in 5-15 courses each term — a
+single hardcoded course id was the wrong default for a multi-course chat.)
 """
 
 import html
@@ -43,18 +45,18 @@ def _thread_query_params(
 class EdClient:
     """Client for the Ed Discussion API.
 
-    Each student's agent creates an EdClient with their personal API token.
-    All operations are scoped to the authenticated user.
+    Constructed with just the student's API token. Every per-course
+    method takes a `course_id: int` argument; agents discover available
+    courses via `list_courses()` first.
     """
 
-    def __init__(self, api_token: str, course_id: int):
+    def __init__(self, api_token: str):
         self.api_token = api_token
-        self.course_id = course_id
         self._session: requests.Session | None = None
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.api_token and self.course_id)
+        return bool(self.api_token)
 
     def _get_session(self) -> requests.Session:
         if self._session is None:
@@ -92,14 +94,58 @@ class EdClient:
             "url": url,
         }
 
-    def get_announcements(self, limit: int = 50) -> list[dict]:
-        """Fetch recent announcements."""
+    @staticmethod
+    def _course_to_dict(c: dict, role: str | None = None) -> dict:
+        return {
+            "id": c.get("id"),
+            "code": c.get("code", ""),
+            "name": c.get("name", ""),
+            "year": c.get("year"),
+            "session": c.get("session", ""),
+            "status": c.get("status", ""),
+            "role": role or "",
+        }
+
+    def list_courses(self, *, only_active: bool = True) -> list[dict]:
+        """Return courses the token owner is enrolled in.
+
+        `/api/user` returns `{user, courses: [{course, role: {...}}]}`. We
+        flatten to a list of dicts with id/code/name/role suitable for the
+        agent to pick from. By default filters to active enrollments;
+        archived courses (last quarter, etc.) are dropped.
+        """
+        if not self.is_configured:
+            return []
+        try:
+            session = self._get_session()
+            resp = session.get(f"{ED_API_BASE}/user", timeout=15)
+            resp.raise_for_status()
+            payload = resp.json()
+            out: list[dict] = []
+            for c in payload.get("courses", []):
+                course = c.get("course", {})
+                role_raw = c.get("role")
+                role = (
+                    role_raw.get("role")
+                    if isinstance(role_raw, dict)
+                    else (role_raw or "")
+                )
+                if only_active and course.get("status") != "active":
+                    continue
+                out.append(self._course_to_dict(course, role))
+            return out
+        except Exception as e:
+            logger.warning(f"Failed to fetch Ed user/courses: {e}")
+            return []
+
+    def get_announcements(self, course_id: int, limit: int = 50) -> list[dict]:
+        """Fetch recent announcements for one course."""
         if not self.is_configured:
             return []
         try:
             session = self._get_session()
             resp = session.get(
-                f"{ED_API_BASE}/courses/{self.course_id}/threads",
+                f"{ED_API_BASE}/courses/{course_id}/threads",
                 params=_thread_query_params(limit=min(limit, 100)),
                 timeout=15,
             )
@@ -114,14 +160,14 @@ class EdClient:
             logger.warning(f"Failed to fetch Ed announcements: {e}")
             return []
 
-    def get_pinned_threads(self) -> list[dict]:
-        """Fetch all pinned threads from the course."""
+    def get_pinned_threads(self, course_id: int) -> list[dict]:
+        """Fetch all pinned threads for one course."""
         if not self.is_configured:
             return []
         try:
             session = self._get_session()
             resp = session.get(
-                f"{ED_API_BASE}/courses/{self.course_id}/threads",
+                f"{ED_API_BASE}/courses/{course_id}/threads",
                 params=_thread_query_params(limit=100),
                 timeout=15,
             )
@@ -134,14 +180,14 @@ class EdClient:
             logger.warning(f"Failed to fetch Ed pinned threads: {e}")
             return []
 
-    def search_threads(self, query: str, limit: int = 20) -> list[dict]:
-        """Search Ed threads by keyword."""
+    def search_threads(self, course_id: int, query: str, limit: int = 20) -> list[dict]:
+        """Search Ed threads in one course by keyword."""
         if not self.is_configured:
             return []
         try:
             session = self._get_session()
             resp = session.get(
-                f"{ED_API_BASE}/courses/{self.course_id}/threads",
+                f"{ED_API_BASE}/courses/{course_id}/threads",
                 params=_thread_query_params(limit=min(limit, 100), search=query),
                 timeout=15,
             )
@@ -154,7 +200,11 @@ class EdClient:
             return []
 
     def get_thread_content(self, thread_id: int) -> dict | None:
-        """Fetch full thread content including answers and comments."""
+        """Fetch full thread content including answers and comments.
+
+        Course-id-free: thread ids are unique across the whole Ed
+        instance so we don't need to know which course the thread lives in.
+        """
         if not self.is_configured:
             return None
         try:
@@ -179,14 +229,14 @@ class EdClient:
             logger.warning(f"Failed to fetch Ed thread {thread_id}: {e}")
             return None
 
-    def get_unread_threads(self, limit: int = 20) -> list[dict]:
-        """Fetch unread threads (relative to the token owner's read status)."""
+    def get_unread_threads(self, course_id: int, limit: int = 20) -> list[dict]:
+        """Fetch unread threads in one course."""
         if not self.is_configured:
             return []
         try:
             session = self._get_session()
             resp = session.get(
-                f"{ED_API_BASE}/courses/{self.course_id}/threads",
+                f"{ED_API_BASE}/courses/{course_id}/threads",
                 params=_thread_query_params(limit=min(limit, 100), filter_="unread"),
                 timeout=15,
             )

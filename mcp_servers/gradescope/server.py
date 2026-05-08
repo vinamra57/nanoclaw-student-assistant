@@ -66,11 +66,7 @@ def _get_client() -> GradescopeClient:
     global _client
     email = os.environ.get("GRADESCOPE_EMAIL", "")
     password = os.environ.get("GRADESCOPE_PASSWORD", "")
-    if (
-        _client is None
-        or _client.email != email
-        or _client.password != password
-    ):
+    if _client is None or _client.email != email or _client.password != password:
         _client = GradescopeClient(email=email, password=password)
     return _client
 
@@ -124,9 +120,11 @@ def list_gradescope_assignments(course_id: str) -> str:
 
 
 if __name__ == "__main__":
+    from typing import Literal, cast
+
     transport = os.environ.get("GRADESCOPE_TRANSPORT", "stdio")
     if transport not in ("stdio", "sse", "streamable-http"):
         raise SystemExit(
             f"GRADESCOPE_TRANSPORT must be stdio|sse|streamable-http, got {transport!r}"
         )
-    mcp.run(transport=transport)
+    mcp.run(transport=cast(Literal["stdio", "sse", "streamable-http"], transport))

@@ -149,9 +149,11 @@ def get_canvas_submission(course_id: int, assignment_id: int) -> str:
 
 
 if __name__ == "__main__":
+    from typing import Literal, cast
+
     transport = os.environ.get("CANVAS_TRANSPORT", "stdio")
     if transport not in ("stdio", "sse", "streamable-http"):
         raise SystemExit(
             f"CANVAS_TRANSPORT must be one of stdio|sse|streamable-http, got {transport!r}"
         )
-    mcp.run(transport=transport)
+    mcp.run(transport=cast(Literal["stdio", "sse", "streamable-http"], transport))

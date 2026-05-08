@@ -14,7 +14,6 @@ set -euo pipefail
 #     --anthropic-key <ANTHROPIC_API_KEY> \
 #     --virtual-ta-url <VIRTUAL_TA_MCP_URL> \
 #     [--ed-token <ED_API_TOKEN>] \
-#     [--ed-course-id <ED_COURSE_ID>] \
 #     [--composio-key <COMPOSIO_API_KEY>] \
 #     [--machine-type <TYPE>] \
 #     [--disk-size <GB>]
@@ -28,7 +27,6 @@ ANTHROPIC_KEY=""
 VIRTUAL_TA_URL=""
 CHATCSE_AGENT_TOKEN=""
 ED_TOKEN=""
-ED_COURSE_ID=""
 COMPOSIO_KEY=""
 MACHINE_TYPE="e2-medium"
 DISK_SIZE="20"
@@ -44,7 +42,6 @@ while [[ $# -gt 0 ]]; do
     --virtual-ta-url) VIRTUAL_TA_URL="$2"; shift 2 ;;
     --chatcse-agent-token) CHATCSE_AGENT_TOKEN="$2"; shift 2 ;;
     --ed-token) ED_TOKEN="$2"; shift 2 ;;
-    --ed-course-id) ED_COURSE_ID="$2"; shift 2 ;;
     --composio-key) COMPOSIO_KEY="$2"; shift 2 ;;
     --machine-type) MACHINE_TYPE="$2"; shift 2 ;;
     --disk-size) DISK_SIZE="$2"; shift 2 ;;
@@ -74,7 +71,6 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   echo "  --anthropic-key <ANTHROPIC_API_KEY> \\"
   echo "  --virtual-ta-url <VIRTUAL_TA_MCP_URL> \\"
   echo "  [--ed-token <ED_API_TOKEN>] \\"
-  echo "  [--ed-course-id <ED_COURSE_ID>] \\"
   echo "  [--composio-key <COMPOSIO_API_KEY>] \\"
   echo "  [--machine-type <TYPE>]    (default: e2-medium) \\"
   echo "  [--disk-size <GB>]         (default: 20)"
@@ -115,7 +111,7 @@ echo "==> Running setup (this takes 5-10 minutes)"
 gcloud compute ssh "$VM_NAME" --project="$PROJECT" --zone="$ZONE" -- \
   "chmod +x ~/setup-student.sh && ~/setup-student.sh \
     '$DISCORD_TOKEN' '$ANTHROPIC_KEY' '$VIRTUAL_TA_URL' \
-    '$ED_TOKEN' '$ED_COURSE_ID' '$COMPOSIO_KEY' '$CHATCSE_AGENT_TOKEN'"
+    '$ED_TOKEN' '$COMPOSIO_KEY' '$CHATCSE_AGENT_TOKEN'"
 
 echo ""
 echo "============================================"

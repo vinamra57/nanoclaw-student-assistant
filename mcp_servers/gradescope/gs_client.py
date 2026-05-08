@@ -32,7 +32,9 @@ class GradescopeClient:
     def __init__(self, email: str, password: str):
         self.email = email
         self.password = password
-        self._conn = None
+        # Typed as Any so we don't need to import GSConnection at module
+        # load time (the gradescopeapi package is an optional dep).
+        self._conn: Any = None
         self._login_ok: bool | None = None
 
     @property
@@ -63,6 +65,9 @@ class GradescopeClient:
     def list_courses(self) -> list[dict[str, Any]]:
         if not self._ensure_login():
             return []
+        # _ensure_login() returning True guarantees self._conn is set; assert
+        # for mypy's narrowing.
+        assert self._conn is not None
         try:
             from bs4 import BeautifulSoup
             from gradescopeapi.classes.account import get_courses_info
@@ -77,7 +82,14 @@ class GradescopeClient:
             out: list[dict[str, Any]] = []
             for role, courses in (info or {}).items():
                 for cid, course in (courses or {}).items():
-                    d = asdict(course) if hasattr(course, "__dataclass_fields__") else dict(course)
+                    # `course` is gradescopeapi's Course dataclass; turn
+                    # it into a plain dict via asdict (or fall back to
+                    # vars() for any non-dataclass shapes the lib might
+                    # return in future versions).
+                    if hasattr(course, "__dataclass_fields__"):
+                        d: dict[str, Any] = asdict(course)
+                    else:
+                        d = dict(vars(course))
                     d["id"] = cid
                     d["role"] = role
                     out.append(d)
@@ -89,23 +101,18 @@ class GradescopeClient:
     def list_assignments(self, course_id: str) -> list[dict[str, Any]]:
         if not self._ensure_login():
             return []
+        assert self._conn is not None
         try:
             from bs4 import BeautifulSoup
             from gradescopeapi.classes.account import get_assignments_student_view
 
-            r = self._conn.session.get(
-                f"{GS_BASE}/courses/{course_id}", timeout=15
-            )
+            r = self._conn.session.get(f"{GS_BASE}/courses/{course_id}", timeout=15)
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
             assignments = get_assignments_student_view(soup) or []
             out = []
             for a in assignments:
-                d = (
-                    asdict(a)
-                    if hasattr(a, "__dataclass_fields__")
-                    else dict(a)
-                )
+                d = asdict(a) if hasattr(a, "__dataclass_fields__") else dict(a)
                 # Stamp the course_id so downstream tooling doesn't need
                 # to re-thread it through.
                 d["course_id"] = course_id
