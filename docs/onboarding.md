@@ -1,12 +1,85 @@
 # Onboarding Guide
 
-This document covers two flows:
+This document covers three flows:
 
-1. **Course staff** — provision a per-student VM running NanoClaw +
-   the Student Assistant MCP servers, and pair the bot with the
-   student's Discord account.
-2. **Students** — accept the bot invite, DM it, connect Ed/Canvas/
-   Google, and start asking questions.
+1. **Self-service (preferred, post-2026-05)** — student logs into
+   ChatCSE, calls `POST /api/me/spawn-assistant` with their Discord
+   user_id, gets a `CHATCSE_AGENT_TOKEN`, and DMs the shared bot.
+   No course-staff intervention. See "Self-service spawn" below.
+2. **Course-staff manual provisioning (legacy)** — staff provisions
+   a dedicated GCP VM running NanoClaw + Student Assistant MCP servers
+   and pairs the bot with the student's Discord account. Kept here
+   because the multi-tenant single-bot rollout is partial — single
+   VM hosts each student's container today, but staff still has to
+   set up the VM. See "For Course Staff" below.
+3. **Students using the bot** — accept the invite, connect Ed/Canvas/
+   Google, and start asking questions. Same regardless of how the
+   container was provisioned. See "For Students" below.
+
+## Architecture in 30 seconds (post-2026-05)
+
+- **One shared VM** runs the NanoClaw daemon + the host MCP servers
+  (Edstem, Canvas, Gradescope, Composio bridge, Virtual TA bridge).
+- **One shared Discord bot** (single application) on the daemon's
+  Discord channel adapter. Per-student routing is by Discord user_id
+  via `messaging_groups.platform_id = "@me:<discord_user_id>"`.
+- **Per-student container** holds only `CHATCSE_AGENT_TOKEN` —
+  there is no per-provider env (`ED_API_TOKEN`, `CANVAS_API_TOKEN`,
+  …). Student creds live encrypted in ChatCSE's `provider_credentials`
+  table; the host MCP servers fetch them on demand using the agent
+  token (5-minute cache TTL).
+- **Self-service onboarding**: ChatCSE's `/api/me/spawn-assistant`
+  issues an agent_token and POSTs to the NanoClaw daemon's control
+  API (`/api/agent-groups/wirings`) to register the
+  Discord-user → agent_group routing.
+
+---
+
+## Self-service spawn
+
+### Prereqs (one-time, by operator)
+
+1. ChatCSE backend deployed with these env vars set:
+   - `AGENT_TOKEN_SIGNING_KEY` — strong random (HS256 signing key)
+   - `NANOCLAW_CONTROL_URL` — e.g. `http://student-vm:3000`
+   - `NANOCLAW_CONTROL_TOKEN` — bearer credential for the daemon
+   - `NANOCLAW_DEFAULT_AGENT_GROUP_ID` — pre-provisioned shared
+     agent_group (until per-student spawn lands)
+2. NanoClaw daemon running on the shared VM with:
+   - The matching `NANOCLAW_CONTROL_TOKEN` env var
+   - At least one agent_group created (its id goes in
+     `NANOCLAW_DEFAULT_AGENT_GROUP_ID` above)
+   - The shared Discord bot connected (one application total — not
+     one per student)
+3. Host MCP servers running on the shared VM, each with **only**:
+   - `CHATCSE_AGENT_TOKEN=<the agent token used for fetches>`
+   - `CHATCSE_BASE_URL=<chatcse url>`
+   - Their own host/port env (`EDSTEM_TRANSPORT=streamable-http`,
+     `EDSTEM_PORT=8765`, etc.)
+
+### Student flow
+
+1. Student signs into chatcse.example.com (Supabase OAuth)
+2. Student finds their Discord user_id (Discord → User Settings →
+   Advanced → enable Developer Mode → right-click own avatar → Copy
+   User ID)
+3. Student calls (from web UI form, curl, etc.):
+   ```bash
+   curl -X POST https://chatcse.example.com/api/me/spawn-assistant \
+     -H "Authorization: Bearer $SUPABASE_JWT" \
+     -H "Content-Type: application/json" \
+     -d '{"discord_user_id": "1143424326331285504"}'
+   ```
+4. Response includes `agent_token` (one-time view) and `wired: true`.
+   The daemon now routes any DM from that Discord user to the wired
+   `agent_group`.
+5. Student DMs the shared bot. From here, the standard
+   `/edstem-key`, `/canvas-key`, `/gradescope-key`, `/connect`
+   flows apply — see [late-binding-keys.md](./late-binding-keys.md).
+
+If `wired: false` is returned, the daemon control API was
+unreachable / unconfigured; the response includes `instructions` for
+manual wiring.
 
 ---
 
@@ -39,24 +112,25 @@ authorization is enforced at the MCP layer (see ChatCSE
 
 ### Discord Bot Setup
 
-One application per student. Reusing one bot across students is not
-supported — each Discord application's token is what NanoClaw uses
-to identify which student is messaging.
+**One shared application** for the whole deployment. Per-student
+routing is via Discord user_id at the daemon's `messaging_groups`
+table — not per-bot identity. Webhook impersonation for per-student
+display name + avatar on outbound is a future phase 3b enhancement.
 
 1. https://discord.com/developers/applications → **New Application**
-   (e.g. "CSE 452 TA — Alice")
-2. **Bot** tab → **Reset Token** → copy the token (you will paste it
-   into `--discord-token` below; it's never persisted by the
-   provisioning script)
+   (e.g. "CSE Virtual TA")
+2. **Bot** tab → **Reset Token** → copy the token (passed via
+   `--discord-token` to the provisioning script; not persisted)
 3. Uncheck **Public Bot**
 4. **Privileged Gateway Intents** → enable **Message Content Intent**
 5. **Installation** → set Install Link to **None**
-6. **OAuth2 → URL Generator** → check **bot** scope, then under bot
-   permissions check **Send Messages**, **Read Message History**,
-   **Attach Files**
-7. Send the generated URL to the student so they invite the bot to a
-   server they own (or to themselves for DMs only — Discord requires
-   an invite even for DMs)
+6. **OAuth2 → URL Generator** → check **bot** + **applications.commands**
+   scopes; bot permissions: **Send Messages**, **Read Message History**,
+   **Attach Files**, **Use External Emojis**, **Manage Webhooks** (the
+   last one is for the future per-student persona impersonation).
+7. Share the URL with all students. Each student invites the bot to
+   a personal server (or just DMs it directly; DMs work without an
+   invite once the bot exists in any shared server).
 
 ### Provisioning a student VM
 
@@ -85,10 +159,15 @@ cd provisioning/
   --anthropic-key "sk-ant-..." \
   --virtual-ta-url "https://chatcse.example.com" \
   --chatcse-agent-token "eyJhbGciOiJIUzI1NiI..." \
-  [--ed-token "<student's ed token>"] \
-  [--ed-course-id 12345] \
   [--composio-key "<composio-admin-api-key>"]
 ```
+
+> **Note:** Per-provider keys (`--ed-token`, `--ed-course-id`,
+> Canvas, Gradescope) are no longer accepted at provisioning. The
+> student sets them after onboarding via Discord slash commands
+> (`/edstem-key`, `/canvas-key`, `/gradescope-key`); the values land
+> in ChatCSE's `provider_credentials` table (Fernet-encrypted) and
+> the host MCP servers fetch them on demand using the agent token.
 
 The script installs Docker, Node 22, Python 3.13, clones
 [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw), runs
