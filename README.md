@@ -1,6 +1,6 @@
 # NanoClaw Student Assistant
 
-A personal AI agent system for university students, built on [NanoClaw](https://github.com/qwibitai/nanoclaw) and integrated with the [ChatCSE](https://github.com/vinamra/ChatCSE) Virtual TA.
+A personal AI agent system for university students, built on [NanoClaw](https://github.com/qwibitai/nanoclaw) and integrated with the [ChatCSE](https://chatcse.vercel.app) Virtual TA.
 
 Each student gets their own NanoClaw agent instance, accessible via Discord DM, that serves as a unified interface to all their academic tools and resources.
 
@@ -48,5 +48,5 @@ See [docs/onboarding.md](docs/onboarding.md) for the full setup guide.
 
 ## Related Repositories
 
-- **[ChatCSE](https://github.com/vinamra/ChatCSE)** — Shared Virtual TA backend (FastAPI + RAG pipelines)
+- **[ChatCSE](https://chatcse.vercel.app)** — Shared Virtual TA backend (FastAPI + RAG pipelines)
 - **[NanoClaw](https://github.com/qwibitai/nanoclaw)** — Personal AI agent framework
