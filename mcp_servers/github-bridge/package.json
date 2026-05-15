@@ -1,0 +1,10 @@
+{
+  "name": "edstem-bridge",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Stdio-to-HTTP MCP bridge for the personal EdStem MCP server",
+  "main": "bridge.mjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

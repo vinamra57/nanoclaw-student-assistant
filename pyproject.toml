@@ -1,5 +1,5 @@
 [project]
-name = "nanoclaw-student-assistant"
+name = "studentclaw"
 version = "0.1.0"
 description = "Personal AI agent for university students — NanoClaw + ChatCSE integration"
 readme = "README.md"

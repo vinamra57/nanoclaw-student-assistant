@@ -1,4 +1,4 @@
-# NanoClaw Student Assistant
+# Studentclaw
 
 A personal AI agent system for university students, built on [NanoClaw](https://github.com/qwibitai/nanoclaw) and integrated with the [ChatCSE](https://chatcse.vercel.app) Virtual TA.
 

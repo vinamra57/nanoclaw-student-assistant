@@ -7,7 +7,7 @@ Architecture, code map, and the operator runbook for this project.
 | Repo | Role |
 |---|---|
 | **ChatCSE** (`chughtapan/ChatCSE`, branch `vinamra/per-user-auth`) | Web backend (FastAPI + SQLAlchemy). Owns auth, the Virtual TA pipeline (course content), per-user `provider_credentials` (encrypted), `agent_tokens`, and the spawn endpoint. |
-| **nanoclaw-student-assistant** (this repo) | Per-student MCP servers (Edstem, Canvas, Gradescope) + their stdio→HTTP bridges. The python `_shared/credentials.py` helper is the load-bearing piece that fetches secrets from ChatCSE on demand. |
+| **studentclaw** (this repo) | Per-student MCP servers (Edstem, Canvas, Gradescope, GitHub) + their stdio→HTTP bridges. The python `_shared/credentials.py` helper is the load-bearing piece that fetches secrets from ChatCSE on demand. |
 | **nanoclaw fork** (`vinamra57/nanoclaw`, branch `student-assistant-patches`, vendored as `nanoclaw/` submodule here) | NanoClaw daemon — Discord channel adapter, agent-group routing, the new `/api/agent-groups/wirings` control plane, log redaction, slash commands + modals. |
 
 ## Trust zones and credentials
@@ -117,7 +117,7 @@ propagates within that window without restart.
 
 ```bash
 # Python deps (host MCP servers + tests)
-cd nanoclaw-student-assistant
+cd studentclaw
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .[dev]
 

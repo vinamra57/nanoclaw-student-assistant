@@ -1,4 +1,4 @@
 [submodule "nanoclaw"]
 	path = nanoclaw
-	url = git@github.com:vinamra57/nanoclaw.git
+	url = https://github.com/vinamra57/nanoclaw.git
 	branch = student-assistant-patches

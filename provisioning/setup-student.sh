@@ -79,7 +79,7 @@ sg docker -c "cd $HOME/nanoclaw && docker compose -f docker-compose.yml run --rm
 echo "==> Setting up student-assistant MCP servers"
 # Clone student-assistant repo for custom MCP servers
 if [[ ! -d "$HOME/student-assistant" ]]; then
-  git clone https://github.com/vinamra57/nanoclaw-student-assistant.git "$HOME/student-assistant"
+  git clone https://github.com/vinamra57/studentclaw.git "$HOME/student-assistant"
 else
   git -C "$HOME/student-assistant" pull --rebase
 fi
