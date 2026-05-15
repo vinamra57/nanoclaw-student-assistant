@@ -43,9 +43,7 @@ class GhClient:
             "User-Agent": "studentclaw-github-mcp/1.0",
         }
 
-    def _get(
-        self, path: str, params: dict[str, Any] | None = None
-    ) -> Any:
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         r = requests.get(
             f"{_API}{path}",
             headers=self._headers(),
@@ -156,7 +154,8 @@ class GhClient:
         payload: dict[str, Any] = {"title": title, "body": body}
         if labels:
             payload["labels"] = labels
-        return self._post(f"/repos/{owner}/{repo}/issues", payload)
+        result = self._post(f"/repos/{owner}/{repo}/issues", payload)
+        return result if isinstance(result, dict) else {"_error": "unexpected response"}
 
     # ── pulls ────────────────────────────────────────────────────────
     def list_pulls(
